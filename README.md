@@ -1,4 +1,4 @@
-# Claude Code via GitHub Copilot
+# Claude Code on Copilot
 
 <p align="center">
 <img alt="pipeline" src="https://github.com/user-attachments/assets/bdc80db2-97b2-4515-ae13-ef220ba3b21c" width="full"/>
@@ -9,7 +9,7 @@ Route Claude Code through your existing GitHub Copilot access using a local, aut
 The default transport uses Copilot's native `/v1/messages` endpoint when the account's model capability metadata supports it. An explicit legacy Chat Completions adapter remains available. This is not full Anthropic API parity: supported models and features depend on the upstream account, integrator, and endpoint.
 
 <p align="center">
-  <img src="assets/claude-copilot.png" alt="Claude Code via GitHub Copilot" width="full" />
+  <img src="assets/claude-copilot.png" alt="Claude Code started through the launcher" width="full" />
 </p>
 
 ## Features
@@ -33,8 +33,8 @@ The default transport uses Copilot's native `/v1/messages` endpoint when the acc
 ### 1. Clone and authenticate
 
 ```bash
-git clone https://github.com/samarth777/claude-code-copilot.git
-cd claude-code-copilot
+git clone https://github.com/andyzengmath/claude-code-on-copilot.git
+cd claude-code-on-copilot
 node scripts/auth.mjs
 ```
 
@@ -115,8 +115,8 @@ Use Node.js 22+ and the actual `scripts\proxy.mjs` entry point:
 
 ```powershell
 # First terminal: authenticate and start the proxy.
-git clone https://github.com/samarth777/claude-code-copilot.git
-cd claude-code-copilot
+git clone https://github.com/andyzengmath/claude-code-on-copilot.git
+cd claude-code-on-copilot
 node scripts\auth.mjs
 node scripts\proxy.mjs
 ```
@@ -312,12 +312,13 @@ Export variables before starting Node or the launcher. Compose explicitly maps t
 
 ## Migration and troubleshooting
 
+- **Coming from `claude-code-copilot`:** this project continues [samarth777/claude-code-copilot](https://github.com/samarth777/claude-code-copilot) and the archived fork [andyzengmath/claude-code-copilot](https://github.com/andyzengmath/claude-code-copilot) under a new name. Point an existing checkout here with `git remote set-url origin https://github.com/andyzengmath/claude-code-on-copilot.git`, then `git pull`. The credential files and the `claude-copilot-proxy` container keep their names. If that checkout still runs the old proxy, follow the next entry.
 - **Upgrading from the old proxy:** the literal `copilot-proxy` API key no longer works, and the old proxy accepts requests without any key, so remove it before starting this version. The launcher detects it and prints these steps.
   - Docker: `docker rm -f claude-copilot-proxy`, then run `./scripts/launch.sh`, or follow [Docker](#docker), whose steps create the key file before the first `docker compose` command (Compose does not create missing credential files).
   - Node: stop the old `node scripts/proxy.mjs` process, then start the new one.
   - Then update your client settings, as the next entry describes.
 - **Client settings from earlier instructions:** earlier versions of this README and of the `/setup-copilot` command used `ANTHROPIC_API_KEY` (set to `copilot-proxy`, or later to the local key) and `http://localhost:18080`. Use `ANTHROPIC_AUTH_TOKEN` and `http://127.0.0.1:18080` instead, and leave `ANTHROPIC_API_KEY` unset, as under [Start Claude Code](#2-start-claude-code). `localhost` can connect to the IPv6 address `[::1]` first. A Node proxy on `127.0.0.1` also holds `[::1]` on its port and warns at startup if another program already has it, but Compose publishes the Docker proxy only on `127.0.0.1`, so with Docker another local program could listen on `[::1]` and receive the key.
-  - Bash or zsh: find the old lines with `grep -nE 'ANTHROPIC_API_KEY|localhost:18080' ~/.bashrc ~/.zshrc ~/.profile 2>/dev/null` and delete them, including an old `claude-copilot` alias (`alias claude-copilot='/path/to/claude-code-copilot/scripts/launch.sh'` replaces it). Run `unset ANTHROPIC_API_KEY` in terminals that are already open.
+  - Bash or zsh: find the old lines with `grep -nE 'ANTHROPIC_API_KEY|localhost:18080' ~/.bashrc ~/.zshrc ~/.profile 2>/dev/null` and delete them, including an old `claude-copilot` alias (`alias claude-copilot='/path/to/claude-code-on-copilot/scripts/launch.sh'` replaces it). Run `unset ANTHROPIC_API_KEY` in terminals that are already open.
   - PowerShell: remove the stored key with `[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", [NullString]::Value, "User")`, and replace a stored `http://localhost:18080` with `[Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "http://127.0.0.1:18080", "User")` (or remove it with `[NullString]::Value`; in PowerShell 7.5 and later, `$null` would store an empty value instead). Store the token only as shown under [Windows (PowerShell)](#windows-powershell). Terminals that are already open keep the old values; `Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction Ignore` clears the key there.
   - Claude Code settings: remove `ANTHROPIC_API_KEY` from the `env` block of `~/.claude/settings.json`, and change an `ANTHROPIC_BASE_URL` there to `http://127.0.0.1:18080`.
 - **Interactive Claude Code gets 401 "A valid local proxy API key is required" while `claude -p` works:** Claude Code asked "Do you want to use this API key?" about `ANTHROPIC_API_KEY`, and the answer was No, the default. It remembers that answer for the key and sends your claude.ai login to the proxy instead, so `/login` does not help. Pass the key as `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_API_KEY` unset, as the launcher and the steps above do, or turn on "Use custom API key" in `/config`. Without a claude.ai login, Claude Code reports "ANTHROPIC_API_KEY not used here" instead.
@@ -359,4 +360,4 @@ Alternatively, set the variable to the full path of your installed executable. T
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE), and [NOTICE.md](NOTICE.md) for the project's origin and acknowledgements.
