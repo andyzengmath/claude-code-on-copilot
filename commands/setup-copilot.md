@@ -3,7 +3,7 @@ description: Check the GitHub Copilot proxy setup and show how to start Claude C
 allowed-tools: Bash(node --version), Bash(test -s *)
 ---
 
-Help the user start Claude Code through the claude-code-copilot proxy in `${CLAUDE_PLUGIN_ROOT}`. Never read, print or copy a credential: do not show the contents of `~/.claude-copilot-auth.json`, `~/.claude-copilot-proxy-key.json` or the files that `COPILOT_AUTH_FILE` and `COPILOT_PROXY_KEY_FILE` name, and do not run `scripts/proxy.mjs --print-api-key` yourself.
+Help the user start Claude Code through the claude-code-on-copilot proxy in `${CLAUDE_PLUGIN_ROOT}`. Never read, print or copy a credential: do not show the contents of `~/.claude-copilot-auth.json`, `~/.claude-copilot-proxy-key.json` or the files that `COPILOT_AUTH_FILE` and `COPILOT_PROXY_KEY_FILE` name, and do not run `scripts/proxy.mjs --print-api-key` yourself.
 
 1. Run `node --version`. If Node.js is missing or older than 22, tell the user to install Node.js 22 or newer, and stop.
 

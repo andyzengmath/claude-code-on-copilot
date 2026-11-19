@@ -1,9 +1,15 @@
 {
-  "name": "claude-code-copilot",
+  "name": "claude-code-on-copilot",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Local authenticated Claude Code proxy for GitHub Copilot with native Messages transport",
+  "homepage": "https://github.com/andyzengmath/claude-code-on-copilot#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andyzengmath/claude-code-on-copilot.git"
+  },
+  "bugs": "https://github.com/andyzengmath/claude-code-on-copilot/issues",
   "engines": {
     "node": ">=22"
   },
