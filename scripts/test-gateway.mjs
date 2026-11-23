@@ -604,10 +604,11 @@ test("downstream disconnect aborts and cancels the upstream body", { timeout: 25
   let upstreamSignal
   let resolveCancelled
   const cancelled = new Promise((resolve) => { resolveCancelled = resolve })
+  const lines = []
   const f = await fixture(t, (call) => {
     upstreamSignal = call.signal
     return streamResponse(event("ping"), { keepOpen: true, onCancel: resolveCancelled })
-  }, { config: { requestTimeoutMs: 2000 } })
+  }, { config: { requestTimeoutMs: 2000 }, logger: linesTo(lines) })
   const controller = new AbortController()
   const response = await f.request({ stream: true }, undefined, { signal: controller.signal })
   const reader = response.body.getReader()
@@ -615,6 +616,64 @@ test("downstream disconnect aborts and cancels the upstream body", { timeout: 25
   controller.abort()
   await cancelled
   assert.equal(upstreamSignal.aborted, true)
+  await until(() => outcomes(lines).length > 0)
+  assert.deepEqual(outcomes(lines), ["  <- client disconnected"])
+})
+
+const linesTo = (lines) => ({ log: (line) => lines.push(line), warn: (line) => lines.push(line), error: (line) => lines.push(line) })
+const outcomes = (lines) => lines.filter((line) => line.startsWith("  <- "))
+
+// Makes the proxy's response report backpressure until release(), like a
+// client that has stopped reading, while the bytes still reach the socket.
+function stallClient(server) {
+  let stalled = true
+  let response
+  server.prependListener("request", (req, res) => {
+    response = res
+    const write = res.write.bind(res)
+    res.write = (...args) => { write(...args); return !stalled }
+  })
+  return { release() { stalled = false; response.emit("drain") } }
+}
+
+test("a client that stops reading for longer than the request timeout still receives the whole stream", { timeout: 5000 }, async (t) => {
+  const text = "x".repeat(64 * 1024)
+  const bytes = new TextEncoder().encode(nativeFrames(message([{ type: "text", text }])))
+  let offset = 0
+  let upstreamDone = false
+  const f = await fixture(t, () => new Response(new ReadableStream({
+    pull(controller) {
+      if (offset >= bytes.length) { upstreamDone = true; controller.close(); return }
+      controller.enqueue(bytes.subarray(offset, offset += 1024))
+    },
+  }), { headers: { "content-type": "text/event-stream" } }), { config: { requestTimeoutMs: 100 } })
+  const client = stallClient(f.server)
+  const response = await f.request({ stream: true })
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(upstreamDone, true, "the proxy keeps reading Copilot while the client is not reading")
+  client.release()
+  const events = parsedEvents(await response.text())
+  assert.equal(events.at(-1).type, "message_stop")
+  assert.equal(events.filter((frame) => frame.type === "content_block_delta").map((frame) => frame.delta.text).join(""), text)
+})
+
+test("a client still not reading after the drain timeout is disconnected, and the log says why", { timeout: 5000 }, async (t) => {
+  const start = event("message_start", { type: "message_start", message: { ...message(), content: [], stop_reason: null } })
+  // A finished upstream leaves only the client's queue; an open one is still being relayed.
+  for (const upstream of [nativeFrames(), start]) {
+    const lines = []
+    let cancelled = false
+    const f = await fixture(t, () => streamResponse(upstream, { keepOpen: upstream === start, onCancel: () => { cancelled = true } }), {
+      config: { clientDrainTimeoutMs: 100 }, logger: linesTo(lines),
+    })
+    stallClient(f.server)
+    const response = await f.request({ stream: true })
+    await assert.rejects(response.text())
+    await until(() => outcomes(lines).length > 0)
+    assert.deepEqual(outcomes(lines), ["  <- client stopped reading"])
+    assert.equal(lines.some((line) => /cancellation failed|Proxy request failed/.test(line)), false, lines.join("\n"))
+    assert.equal(cancelled, upstream === start, "an open upstream is cancelled")
+  }
 })
 
 test("chat fallback maps forced tool choice and parallel-tool control", async (t) => {
