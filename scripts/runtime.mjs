@@ -231,7 +231,9 @@ export async function writeResponse(res, data, { signal, timeoutMs = 120000 } = 
     const timer = setTimeout(() => {
       cleanup()
       res.destroy()
-      reject(new ProxyError(504, "Client stopped reading the response"))
+      const error = new ProxyError(504, `Client stopped reading the response for ${timeoutMs}ms`)
+      error.clientStalled = true
+      reject(error)
     }, timeoutMs)
     res.once("drain", onDrain)
     res.once("close", onClose)
@@ -249,10 +251,12 @@ export async function openResponse(fetchImpl, url, init, {
   parentSignal?.throwIfAborted()
   const controller = new AbortController()
   const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal
+  // Cancelling a body after this proxy aborted its fetch rejects with that
+  // same abort reason, which is not a cancellation failure.
   const cancel = (body) => {
     if (!body || body.locked) return
     body.cancel().catch((error) => {
-      if (error.name !== "AbortError") logger.warn("Upstream body cancellation failed")
+      if (error.name !== "AbortError" && error !== signal.reason) logger.warn("Upstream body cancellation failed")
     })
   }
   async function wait(promise, phase, ms) {
@@ -286,7 +290,7 @@ export async function openResponse(fetchImpl, url, init, {
       controller.abort(abortError("Upstream response consumption ended"))
       if (reader) {
         reader.cancel().catch((error) => {
-          if (error.name !== "AbortError") logger.warn("Upstream reader cancellation failed")
+          if (error.name !== "AbortError" && error !== signal.reason) logger.warn("Upstream reader cancellation failed")
         })
       } else cancel(response.body)
     }

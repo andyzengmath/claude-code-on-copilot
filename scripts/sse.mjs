@@ -89,20 +89,38 @@ export async function consumeSSE(upstream, onFrame, maxEventBytes) {
   return false
 }
 
-export function createSSEWriter(res, { signal, timeoutMs, heartbeatMs = 15000, onError = (error) => res.destroy(error) } = {}) {
+// Writes are queued, so a client that reads slowly or pauses does not hold up
+// the upstream until `maxQueuedBytes` are waiting; past that, write() waits for
+// the client. The first write that fails, including one that waited `timeoutMs`
+// for a client that stopped reading, fails the writer and is passed to onError.
+export function createSSEWriter(res, {
+  signal, timeoutMs, heartbeatMs = 15000, maxQueuedBytes = Infinity, onError = (error) => res.destroy(error),
+} = {}) {
   let tail = Promise.resolve()
   let pending = 0
+  let queuedBytes = 0
   let stopped = false
+  let failure = null
   let timer
   const writer = {
     get busy() { return pending !== 0 },
+    get failure() { return failure },
     write(raw) {
+      if (failure) return Promise.reject(failure)
       if (stopped) return Promise.reject(new ProxyError(502, "SSE writer is already closed"))
+      const bytes = Buffer.byteLength(raw)
       pending++
+      queuedBytes += bytes
       const next = tail.then(() => writeResponse(res, raw, { signal, timeoutMs }))
-      // Callers retain the rejection; the queue can still carry an error frame.
-      tail = next.then(() => { pending-- }, () => { pending-- })
-      return next
+      tail = next.then(() => { pending--; queuedBytes -= bytes }, (error) => {
+        pending--
+        queuedBytes -= bytes
+        if (!failure) {
+          failure = error
+          onError(error)
+        }
+      })
+      return queuedBytes > maxQueuedBytes ? next : Promise.resolve()
     },
     event(type, data = { type }) {
       return writer.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)
@@ -110,7 +128,8 @@ export function createSSEWriter(res, { signal, timeoutMs, heartbeatMs = 15000, o
     startPings() {
       if (!heartbeatMs || timer) return
       timer = setInterval(() => {
-        if (!writer.busy && !stopped) writer.event("ping").catch(onError)
+        // A failed ping fails the writer, which reports it through onError.
+        if (!writer.busy && !stopped) writer.event("ping").catch(() => {})
       }, heartbeatMs)
       timer.unref()
     },

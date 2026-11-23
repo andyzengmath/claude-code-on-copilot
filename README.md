@@ -230,7 +230,8 @@ OAuth credentials and the local API key are persisted privately on disk. On POSI
 
 ## Reliability and errors
 
-- Upload, response, and SSE event sizes are bounded. The request timeout covers idle-body/drain waits and the headers of streaming requests and token counts, not an unconditional wall-clock limit for an actively progressing stream. Copilot sends a non-streaming reply's headers only when the reply is finished, so they may take up to `COPILOT_NONSTREAMING_TIMEOUT_MS`; such a timeout is never replayed.
+- Upload, response, and SSE event sizes are bounded. The request timeout covers idle upstream bodies and the headers of streaming requests and token counts, not an unconditional wall-clock limit for an actively progressing stream. Copilot sends a non-streaming reply's headers only when the reply is finished, so they may take up to `COPILOT_NONSTREAMING_TIMEOUT_MS`; such a timeout is never replayed.
+- A client that reads slowly or stops reading for a while does not hold up Copilot: the proxy queues the stream for it, up to `COPILOT_MAX_RESPONSE_BYTES`, and keeps the connection open until the client has read nothing for `COPILOT_CLIENT_DRAIN_TIMEOUT_MS`. The log then shows `<- client stopped reading`; a client that closed the connection shows `<- client disconnected`.
 - Retries cover explicit **429, 500, 502, 503, and 504** responses only. Admission and dispatch of additional attempts must fit within the retry budget; an already-dispatched response retains its own timeout. Full `Retry-After` delays are honored when affordable or returned to the client, never shortened. A response carrying `x-should-retry: false` is not retried. Ambiguous network errors, timeouts, and response-body failures are not automatically replayed. Hosted search requests are never retried; provider search is their fallback.
 - Client disconnects cancel owned upstream work, queue waits, and search work rather than allowing detached requests to continue.
 - Inference concurrency is unlimited by default (`COPILOT_MAX_CONCURRENT_REQUESTS=0`). Setting a positive limit enables bounded admission: 64 queued requests, 64 MiB queued bodies, and a 30-second queue deadline by default. Overflow/deadline failures return errors rather than growing an unbounded queue.
@@ -264,7 +265,8 @@ Export variables before starting Node or the launcher. Compose explicitly maps t
 | `COPILOT_MAX_BODY_BYTES` | `33554432` | Maximum request body (32 MiB) |
 | `COPILOT_MAX_RESPONSE_BYTES` | `67108864` | Maximum upstream response (64 MiB) |
 | `COPILOT_MAX_SSE_EVENT_BYTES` | `8388608` | Maximum SSE event (8 MiB) |
-| `COPILOT_REQUEST_TIMEOUT_MS` | `120000` | Idle-body/drain timeout; header timeout for streaming requests and token counts |
+| `COPILOT_REQUEST_TIMEOUT_MS` | `120000` | Idle upstream body timeout; header timeout for streaming requests and token counts |
+| `COPILOT_CLIENT_DRAIN_TIMEOUT_MS` | `1800000` | How long a stream waits for a client that has stopped reading before closing the connection (30 minutes) |
 | `COPILOT_NONSTREAMING_TIMEOUT_MS` | `600000` | Wait for a non-streaming reply's headers, which Copilot sends only when the reply is finished (10 minutes) |
 | `COPILOT_MAX_RETRIES` | `3` | Retryable HTTP-status retries; `0` disables retries |
 | `COPILOT_RETRY_BUDGET_MS` | `30000` | Total retry budget; does not shorten `Retry-After` |
@@ -329,6 +331,7 @@ Export variables before starting Node or the launcher. Compose explicitly maps t
 - **Port occupied / incompatible service:** if the launcher reports an older claude-code-copilot proxy that accepts requests without an API key, remove it as described above. Don't avoid it with another `COPILOT_PROXY_PORT`: it keeps answering anyone who can reach it, and the old Compose file published it on all network interfaces. For any other service, identify the owning process/container and stop or restart only that resource, or choose a different `COPILOT_PROXY_PORT`. The launcher never kills a shared proxy or restarts unrelated Docker services.
 - **Unknown model / unsupported feature:** inspect authenticated `/v1/models`, select an available identifier, and check the transport restrictions above. No automatic tier/version substitution is performed.
 - **429, queue overload, or timeout:** inspect the returned error and `Retry-After`, reduce parallelism, or adjust documented bounds. Raising retries cannot safely repair ambiguous network failures.
+- **Claude Code reports "Connection lost mid-response":** the connection to the proxy closed while a reply was streaming. The proxy log's line for that request says why: `<- client stopped reading` means Claude Code read nothing for `COPILOT_CLIENT_DRAIN_TIMEOUT_MS`, and `<- client disconnected` means the client side closed the connection. A Copilot failure instead logs `Proxy request failed`, and Claude Code reports it as a server error. Earlier versions closed a stream after Claude Code had read nothing for two minutes, logging only `<- failed`.
 
 ## Tests
 

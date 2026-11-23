@@ -202,10 +202,17 @@ export function createProxyServer({
   function startStream(ctx, headers) {
     beginStream(ctx.res, headers)
     ctx.writer = createSSEWriter(ctx.res, {
-      signal: ctx.signal, timeoutMs: config.requestTimeoutMs, heartbeatMs: config.heartbeatMs,
+      signal: ctx.signal, timeoutMs: config.clientDrainTimeoutMs, heartbeatMs: config.heartbeatMs,
+      maxQueuedBytes: config.maxResponseBytes,
       onError: (error) => { ctx.controller.abort(error); ctx.res.destroy() },
     })
     ctx.writer.startPings()
+  }
+
+  // Why a response ended early on the client's side, for the outcome log line.
+  function interruption(reason) {
+    if (reason?.clientStalled) return "client stopped reading"
+    return lifecycle.aborted ? "proxy shutting down" : "client disconnected"
   }
 
   // handle() disposes the response, including after an error.
@@ -407,6 +414,7 @@ export function createProxyServer({
       else await handleMessages(ctx, url, route === "/v1/messages/count_tokens")
     } catch (caught) {
       if (signal.aborted || res.destroyed) {
+        ctx.outcome = interruption(ctx.writer?.failure ?? (signal.aborted ? signal.reason : caught))
         if (!res.destroyed) res.destroy()
         return
       }
@@ -439,6 +447,8 @@ export function createProxyServer({
     } finally {
       ctx.upstream?.dispose()
       if (ctx.writer) await ctx.writer.close()
+      // The client can stop reading after Copilot has finished the response.
+      if (ctx.writer?.failure && ctx.outcome === "complete") ctx.outcome = interruption(ctx.writer.failure)
       if (!res.destroyed && !res.writableEnded) res.end()
       controller.abort(abortError("Request finished"))
       if (ctx.inference) logger.log(`  <- ${ctx.outcome}`)

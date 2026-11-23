@@ -4,7 +4,7 @@ import { setImmediate as nextTurn } from "node:timers/promises"
 import test from "node:test"
 import * as runtime from "./runtime.mjs"
 import { readConfig } from "./config.mjs"
-import { consumeSSE, NativeMessageState, SSEDecoder } from "./sse.mjs"
+import { consumeSSE, createSSEWriter, NativeMessageState, SSEDecoder } from "./sse.mjs"
 import { responseHeaders } from "./upstream.mjs"
 
 const proxy = { ...runtime, readConfig, SSEDecoder }
@@ -176,6 +176,25 @@ test("a closed backpressured response rejects instead of hanging", async () => {
   response.emit("close")
   await rejected
   assert.equal(response.listenerCount("drain"), 0)
+})
+
+test("the SSE writer queues for a slow client only up to its byte budget", async () => {
+  const response = new EventEmitter()
+  const written = []
+  response.write = (data) => { written.push(data); return false }
+  response.destroy = () => {}
+  const writer = createSSEWriter(response, { timeoutMs: 1000, heartbeatMs: 0, maxQueuedBytes: 10 })
+  await writer.write("12345")
+  let waiting = true
+  const overBudget = writer.write("678901").then(() => { waiting = false })
+  await nextTurn()
+  assert.equal(waiting, true, "a write beyond the budget waits for the client")
+  response.emit("drain")
+  await nextTurn()
+  response.emit("drain")
+  await overBudget
+  assert.deepEqual(written, ["12345", "678901"])
+  await writer.close()
 })
 
 test("Retry-After seconds and dates are not truncated to thirty seconds", () => {
