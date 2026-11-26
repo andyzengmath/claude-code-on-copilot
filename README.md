@@ -244,6 +244,10 @@ For example, opt in to a four-request concurrency limit and optional spacing:
 COPILOT_MAX_CONCURRENT_REQUESTS=4 COPILOT_MIN_REQUEST_INTERVAL_MS=100 ./scripts/launch.sh
 ```
 
+## Performance
+
+Measured on 2026-11-26 with Claude Opus 5.5, the proxy adds no measurable latency, and Copilot streams tokens at the same rate to Claude Code through the proxy as to Copilot CLI: about 110 tokens per second in real sessions. Claude Code's turns take longer mainly because of its effort level. Calls at `max` effort averaged 22.5 s and 2,530 output tokens, against 12.1 s and 1,295 tokens at `medium`, so use `/effort medium` or `high` for routine work. Details: [Speed comparison: 2026-11-26](docs/speed-comparison-2026-11-26.md).
+
 ## Configuration
 
 Export variables before starting Node or the launcher. Compose explicitly maps the variables below, except host/internal port, which are fixed inside the container as described above. `scripts/config.mjs` validates runtime configuration; `scripts/credentials.mjs` resolves credential paths.
