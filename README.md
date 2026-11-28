@@ -71,7 +71,7 @@ Give Claude Code the key as `ANTHROPIC_AUTH_TOKEN`, as the launcher does, and le
 
 **Desktop apps, such as Orca:**
 
-An app opened from the Dock, Finder or a desktop menu doesn't see variables exported in a shell or set by the launcher. The Claude Code it starts then has no credentials, and Orca refuses to send with "Claude isn't signed in". Put both values in the `env` block of Claude Code's settings instead; Claude Code reads that file however it starts. From the checkout, in Bash or zsh, with the same credential-path environment as the proxy:
+The launcher and the manual steps above set the variables for one Claude Code process or one terminal, so a desktop app doesn't get them. Orca, for example, starts Claude Code with the environment of your login shell, which it reads by running the shell. Without the variables, Claude Code reports no credentials, and Orca refuses to send with "Claude isn't signed in". Put both values in the `env` block of Claude Code's settings instead; Claude Code reads that file however it starts. From the checkout, in Bash or zsh, with the same credential-path environment as the proxy:
 
 ```bash
 node -e '
@@ -92,6 +92,7 @@ The command keeps your other settings, removes `ANTHROPIC_API_KEY` from them, do
 - **Keep the proxy running.** The app doesn't start it: use `node scripts/proxy.mjs` or [Docker](#docker).
 - **Start a new chat** in the app after changing the settings.
 - **Orca's managed accounts** (Claude Accounts settings) each use their own `CLAUDE_CONFIG_DIR`. To configure one, run the command with that variable set.
+- **Shell startup files:** exporting the two variables in a file such as `~/.zshrc` also works for Orca, which reads them from your shell. It doesn't work for apps that don't read your shell, and it puts the key in every shell.
 - **On Windows,** apps started after the [Windows (PowerShell)](#windows-powershell) steps already see the variables.
 
 ### 3. Select your model
@@ -354,7 +355,7 @@ Export variables before starting Node or the launcher. Compose explicitly maps t
   - Claude Code settings: remove `ANTHROPIC_API_KEY` from the `env` block of `~/.claude/settings.json`, and change an `ANTHROPIC_BASE_URL` there to `http://127.0.0.1:18080`.
 - **Interactive Claude Code gets 401 "A valid local proxy API key is required" while `claude -p` works:** Claude Code asked "Do you want to use this API key?" about `ANTHROPIC_API_KEY`, and the answer was No, the default. It remembers that answer for the key and sends your claude.ai login to the proxy instead, so `/login` does not help. Pass the key as `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_API_KEY` unset, as the launcher and the steps above do, or turn on "Use custom API key" in `/config`. Without a claude.ai login, Claude Code reports "ANTHROPIC_API_KEY not used here" instead.
 - **Login screen, or "Unable to connect to Anthropic services", when Claude Code starts for the first time:** with `ANTHROPIC_API_KEY`, first-run setup checks the connection to Anthropic, asks about the key and, if you decline it, shows the login screen. With `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` set and `ANTHROPIC_API_KEY` unset, setup skips all three. Never overwrite `~/.claude.json` to get past setup: it also holds your folder trust, login and API-key answers.
-- **A desktop app, such as Orca, says "Claude isn't signed in":** the Claude Code it started can't see the proxy's variables, so it reports no credentials. Orca checks this before sending. Put the variables in Claude Code's settings, as under [Desktop apps, such as Orca](#2-start-claude-code), keep the proxy running, and start a new chat.
+- **A desktop app, such as Orca, says "Claude isn't signed in":** the Claude Code it started didn't get the proxy's variables, which the launcher and the manual steps set only for one process or terminal. It then reports no credentials, and Orca checks this before sending. Put the variables in Claude Code's settings, as under [Desktop apps, such as Orca](#2-start-claude-code), keep the proxy running, and start a new chat.
 - **401 from the proxy:** the request did not carry the proxy's local key; the error says "A valid local proxy API key is required". Only a missing or wrong local key gets 401, sent with `x-should-retry: false` so that Claude Code does not retry it. Use the key from the key file of the running proxy (`COPILOT_PROXY_KEY_FILE`), passed as `ANTHROPIC_AUTH_TOKEN`. Health is intentionally public and does not validate your key.
 - **502 "Copilot rejected the saved GitHub sign-in":** the proxy accepted your key, but GitHub rejected the OAuth token in the auth file, for example because it expired or was revoked. Rerun `node scripts/auth.mjs` with the intended `COPILOT_AUTH_FILE`, then restart your proxy; for Docker, recreate it with `docker compose up -d --force-recreate --no-deps proxy`. Do not delete unrelated credentials.
 - **503 "The proxy cannot read the saved GitHub sign-in":** the auth file is missing or unreadable. Run `node scripts/auth.mjs` with the intended `COPILOT_AUTH_FILE`. Like the 502, it is sent with `x-should-retry: false`, because retrying cannot fix it.
